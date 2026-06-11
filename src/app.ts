@@ -14,7 +14,11 @@ import {
   signProvisioningResponse,
 } from "./provisioning";
 import { buildProvisioningGenericRequest } from "./requestBuilder";
-import { loadSigningContext, signGenericRequestWithContext } from "./signing";
+import {
+  listSignerIdentities,
+  loadSigningContext,
+  signGenericRequestWithContext,
+} from "./signing";
 import { ProvisioningRecord, RequestStore } from "./store";
 import {
   createVerusId,
@@ -24,6 +28,7 @@ import {
 
 type GenerateQrPayload = {
   parentId?: string;
+  signingId?: string;
   webhookBaseUrl?: string;
   responseUri?: string;
 };
@@ -54,7 +59,7 @@ function canonicalParentFqn(parentIdentity: any, listedParentFqn?: string): stri
 }
 
 function defaultResponseUri(webhookBaseUrl: string): string {
-  return `${normalizeWebhookBaseUrl(webhookBaseUrl)}/generic-response`;
+  return normalizeWebhookBaseUrl(webhookBaseUrl);
 }
 
 function optionalHttpUri(value: unknown, fieldName: string): string | undefined {
@@ -126,6 +131,18 @@ export function createApp(
     }
   });
 
+  app.get("/api/signers", async (_req, res) => {
+    try {
+      const verusId = createVerusId(config);
+      res.json({
+        signers: await listSignerIdentities(verusId, config),
+        configuredSigningId: config.provisioningSigningId || "",
+      });
+    } catch (error) {
+      jsonError(res, error);
+    }
+  });
+
   app.post("/api/generate-provisioning-qr", async (req, res) => {
     try {
       const payload = req.body as GenerateQrPayload;
@@ -136,6 +153,7 @@ export function createApp(
       const verusId = createVerusId(config);
       const parentIdentity = await requireIdentity(verusId, payload.parentId);
       const localParents = await listParentIdentities(verusId);
+      const localSigners = await listSignerIdentities(verusId, config);
 
       const parentId = parentIdentity.identity!.identityaddress!;
       const listedParent = localParents.find(
@@ -144,11 +162,33 @@ export function createApp(
           parent.iAddress === payload.parentId ||
           parent.fullyQualifiedName === payload.parentId,
       );
+      if (!listedParent) {
+        throw new ValidationError(
+          "Selected parent namespace must be an active local currency identity.",
+        );
+      }
+
+      const signingId = payload.signingId || config.provisioningSigningId || parentId;
+      const listedSigner = localSigners.find(
+        (signer) =>
+          signer.iAddress === signingId ||
+          signer.fullyQualifiedName === signingId,
+      );
+      if (!listedSigner) {
+        throw new ValidationError(
+          "Selected signer VerusID is not available for signing.",
+        );
+      }
+
       const parentFqn = canonicalParentFqn(
         parentIdentity,
         listedParent?.fullyQualifiedName,
       );
-      const signingContext = await loadSigningContext(verusId, config, parentId);
+      const signingContext = await loadSigningContext(
+        verusId,
+        config,
+        listedSigner.iAddress,
+      );
       const webhookBaseUrl = payload.webhookBaseUrl || config.webhookBaseUrl;
       const responseUri =
         payload.responseUri === undefined
@@ -197,6 +237,11 @@ export function createApp(
           name: record.parentName,
           iAddress: record.parentId,
           fullyQualifiedName: record.parentFqn,
+        },
+        signer: {
+          name: listedSigner.name,
+          iAddress: signingContext.signingIdentityAddress,
+          fullyQualifiedName: listedSigner.fullyQualifiedName,
         },
         webhookUrl: built.webhookUrl,
         responseUri: built.responseUri,

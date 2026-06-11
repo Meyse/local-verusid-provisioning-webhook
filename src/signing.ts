@@ -4,7 +4,14 @@ import { VerusIdInterface } from "verusid-ts-client";
 import { AppConfig, requireSigningConfig } from "./config";
 import { VRSCTEST_SYSTEM_ID } from "./constants";
 import { ConfigError } from "./errors";
-import { getCurrentHeight, requireIdentity, IdentityResult } from "./verus";
+import {
+  getCurrentHeight,
+  requireIdentity,
+  IdentityResult,
+  listLocalIdentities,
+  LocalIdentity,
+} from "./verus";
+import { withTrailingAt } from "./names";
 
 export type SigningContext = {
   signingIdInput: string;
@@ -15,6 +22,95 @@ export type SigningContext = {
   identityResult: IdentityResult;
   currentHeight?: number;
 };
+
+export type SignerIdentity = LocalIdentity;
+
+function primaryAddressFromWif(wif: string): string {
+  const addressFromWif = ECPair.fromWIF(wif, networks.verus).getAddress();
+  if (typeof addressFromWif !== "string" || addressFromWif.length === 0) {
+    throw new ConfigError("VERUS_SIGNING_WIF did not resolve to a primary address.");
+  }
+  return addressFromWif;
+}
+
+function signableIdentity(
+  identity: Pick<LocalIdentity, "minimumSignatures" | "primaryAddresses">,
+  signingPrimaryAddress?: string,
+): boolean {
+  if (identity.minimumSignatures !== 1) return false;
+  return signingPrimaryAddress
+    ? identity.primaryAddresses.includes(signingPrimaryAddress)
+    : true;
+}
+
+function signerIdentityFromResult(
+  identityResult: IdentityResult,
+  fallbackId: string,
+): SignerIdentity {
+  const identity = identityResult.identity;
+  const identityAddress = identity?.identityaddress;
+  if (!identityAddress) {
+    throw new ConfigError("The signing VerusID did not resolve to an i-address.");
+  }
+
+  const fullyQualifiedName = withTrailingAt(
+    identityResult.fullyqualifiedname || identity?.name || fallbackId,
+  );
+
+  return {
+    name: identity?.name || fullyQualifiedName,
+    iAddress: identityAddress,
+    fullyQualifiedName,
+    status: identityResult.status,
+    parent: identity?.parent,
+    systemId: identity?.systemid,
+    primaryAddresses: identity?.primaryaddresses ?? [],
+    minimumSignatures: identity?.minimumsignatures,
+  };
+}
+
+function uniqueSigners(signers: SignerIdentity[]): SignerIdentity[] {
+  const seen = new Set<string>();
+  return signers.filter((signer) => {
+    if (seen.has(signer.iAddress)) return false;
+    seen.add(signer.iAddress);
+    return true;
+  });
+}
+
+export async function listSignerIdentities(
+  verusId: VerusIdInterface,
+  config: AppConfig,
+): Promise<SignerIdentity[]> {
+  const signingPrimaryAddress = config.verusSigningWif
+    ? primaryAddressFromWif(config.verusSigningWif)
+    : undefined;
+  const localSigners = (await listLocalIdentities(verusId)).filter((identity) =>
+    signableIdentity(identity, signingPrimaryAddress),
+  );
+
+  if (!config.provisioningSigningId) return localSigners;
+
+  const configuredIdentity = signerIdentityFromResult(
+    await requireIdentity(verusId, config.provisioningSigningId),
+    config.provisioningSigningId,
+  );
+  if (!signableIdentity(configuredIdentity, signingPrimaryAddress)) {
+    throw new ConfigError(
+      "Configured PROVISIONING_SIGNING_ID is not a single-signature VerusID controlled by this service.",
+    );
+  }
+  if (
+    !signingPrimaryAddress &&
+    !localSigners.some((signer) => signer.iAddress === configuredIdentity.iAddress)
+  ) {
+    throw new ConfigError(
+      "Configured PROVISIONING_SIGNING_ID is not an active single-signature identity in the local wallet.",
+    );
+  }
+
+  return uniqueSigners([configuredIdentity, ...localSigners]);
+}
 
 export async function loadSigningContext(
   verusId: VerusIdInterface,
@@ -30,13 +126,7 @@ export async function loadSigningContext(
   let signingPrimaryAddress: string | undefined;
 
   if (signingConfig.verusSigningWif) {
-    const addressFromWif = ECPair.fromWIF(
-      signingConfig.verusSigningWif,
-      networks.verus,
-    ).getAddress();
-    if (typeof addressFromWif !== "string" || addressFromWif.length === 0) {
-      throw new ConfigError("VERUS_SIGNING_WIF did not resolve to a primary address.");
-    }
+    const addressFromWif = primaryAddressFromWif(signingConfig.verusSigningWif);
     signingPrimaryAddress = addressFromWif;
 
     const primaryAddresses = identityResult.identity?.primaryaddresses ?? [];

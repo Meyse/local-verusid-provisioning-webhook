@@ -13,9 +13,9 @@ module.exports = {
   RPC_PASSWORD: "your-rpc-password",
   VRSCTEST_CONF_PATH: "/Users/you/Library/Application Support/Komodo/vrsctest/vrsctest.conf",
 
-  // Optional. If omitted, the selected parent VerusID signs the QR and
-  // provisioning responses. Set this only if the service signer should differ
-  // from the selected parent namespace.
+  // Optional. If set, the dashboard preselects this signer VerusID. The signer
+  // signs the QR and provisioning responses and may differ from the parent
+  // currency namespace.
   PROVISIONING_SIGNING_ID: "",
   // Optional. If omitted, local verusd signs via RPC. Set this only if you want
   // offline WIF signing instead of RPC signing.
@@ -23,6 +23,6 @@ module.exports = {
 
   // Optional address controlled by your local provisioning wallet. Used for the
   // name commitment transaction, not as the final SubID owner. If omitted, the
-  // selected parent VerusID's first primary address is used.
+  // selected parent currency namespace's first primary address is used.
   COMMITMENT_CONTROL_ADDRESS: ""
 };

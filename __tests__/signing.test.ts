@@ -1,5 +1,9 @@
 import { buildProvisioningGenericRequest } from "../src/requestBuilder";
-import { signGenericRequestWithContext, SigningContext } from "../src/signing";
+import {
+  listSignerIdentities,
+  signGenericRequestWithContext,
+  SigningContext,
+} from "../src/signing";
 import { VRSCTEST_SYSTEM_ID } from "../src/constants";
 
 const TEST_REQUEST_ID = "iPsFBfFoCcxtuZNzE8yxPQhXVn4dmytf8j";
@@ -48,5 +52,61 @@ describe("signGenericRequestWithContext", () => {
     expect(built.request.signature?.signatureAsVch.toString("base64")).toBe(
       TEST_SIGNATURE,
     );
+  });
+});
+
+describe("listSignerIdentities", () => {
+  it("only lists active single-signature local identities", async () => {
+    const request = jest.fn(async () => ({
+      result: [
+        {
+          status: "active",
+          fullyqualifiedname: "signer.VRSCTEST@",
+          identity: {
+            name: "signer",
+            identityaddress: "iSigner",
+            primaryaddresses: ["RSigner"],
+            minimumsignatures: 1,
+          },
+        },
+        {
+          status: "active",
+          fullyqualifiedname: "multi.VRSCTEST@",
+          identity: {
+            name: "multi",
+            identityaddress: "iMulti",
+            primaryaddresses: ["RMulti"],
+            minimumsignatures: 2,
+          },
+        },
+        {
+          status: "revoked",
+          fullyqualifiedname: "revoked.VRSCTEST@",
+          identity: {
+            name: "revoked",
+            identityaddress: "iRevoked",
+            primaryaddresses: ["RRevoked"],
+            minimumsignatures: 1,
+          },
+        },
+      ],
+    }));
+
+    await expect(
+      listSignerIdentities(
+        { interface: { request } } as any,
+        {
+          uiPort: 3010,
+          webhookBaseUrl: "http://localhost:3010",
+          rpcHost: "127.0.0.1",
+          rpcPort: 18843,
+        },
+      ),
+    ).resolves.toMatchObject([
+      {
+        iAddress: "iSigner",
+        fullyQualifiedName: "signer.VRSCTEST@",
+      },
+    ]);
   });
 });

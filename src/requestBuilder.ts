@@ -67,7 +67,7 @@ export function buildProvisioningGenericRequest(
       identityID: CompactIAddressObject.fromAddress(params.signingIdentityId),
     }),
     responseURIs: params.responseUri
-      ? [ResponseURI.fromUriString(params.responseUri, ResponseURI.TYPE_POST)]
+      ? [ResponseURI.fromUriString(params.responseUri, ResponseURI.TYPE_REDIRECT)]
       : undefined,
     flags: primitives.GenericRequest.FLAG_IS_TESTNET,
   });

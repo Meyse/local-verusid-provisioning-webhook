@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Local VerusID Provisioning</title>
+    <title>VerusID Provisioning</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="shell">
       <header class="page-header">
         <div>
-          <h1>Local VerusID Provisioning</h1>
+          <h1>VerusID Provisioning</h1>
           <p>Generate choose-name provisioning QRs and serve the local webhook.</p>
         </div>
         <dl class="meta">
@@ -28,11 +28,17 @@
       <section class="panel">
         <div class="panel-header">
           <h2>Generate QR</h2>
-          <button id="refresh-parents" type="button">Refresh parents</button>
+          <button id="refresh-parents" type="button">Refresh choices</button>
         </div>
         <form id="qr-form" class="form-grid">
           <label>
-            Parent VerusID
+            Signer VerusID
+            <select id="signing-id" required>
+              <option value="">Loading...</option>
+            </select>
+          </label>
+          <label>
+            Parent currency namespace
             <select id="parent-id" required>
               <option value="">Loading...</option>
             </select>
@@ -42,7 +48,7 @@
             <input id="webhook-base-url" type="url" value="<%= webhookBaseUrl %>" required />
           </label>
           <label>
-            Response URI (POST)
+            Redirect URI
             <input id="response-uri" type="url" value="<%= responseUri %>" />
           </label>
           <button id="generate-button" type="submit">Generate provisioning QR</button>
@@ -90,7 +96,7 @@
             <dd data-field="registrationSummary"></dd>
           </div>
           <div>
-            <dt>Auth response</dt>
+            <dt>Completion</dt>
             <dd data-field="genericResponseSummary"></dd>
           </div>
         </dl>
@@ -110,6 +116,13 @@
               <dd>
                 <span data-field="parentId"></span>
                 <button class="copy-value" type="button" data-copy-field="parentId" hidden>Copy</button>
+              </dd>
+            </div>
+            <div>
+              <dt>Signer ID</dt>
+              <dd>
+                <span data-field="signingId"></span>
+                <button class="copy-value" type="button" data-copy-field="signingId" hidden>Copy</button>
               </dd>
             </div>
             <div>
@@ -149,7 +162,7 @@
               <dd data-field="lastResponseState"></dd>
             </div>
             <div>
-              <dt>Response URI</dt>
+              <dt>Redirect URI</dt>
               <dd>
                 <span data-field="responseUri"></span>
                 <button class="copy-value" type="button" data-copy-field="responseUri" hidden>Copy</button>

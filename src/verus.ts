@@ -2,14 +2,23 @@ import { VerusIdInterface } from "verusid-ts-client";
 import { AppConfig, requireRpcConfig } from "./config";
 import { VRSCTEST_SYSTEM_ID } from "./constants";
 import { ValidationError } from "./errors";
+import { withoutTrailingAt } from "./names";
 
-export type ParentIdentity = {
+export type LocalIdentity = {
   name: string;
   iAddress: string;
   fullyQualifiedName: string;
   status?: string;
   parent?: string;
   systemId?: string;
+  primaryAddresses: string[];
+  minimumSignatures?: number;
+};
+
+export type ParentIdentity = LocalIdentity & {
+  currencyId: string;
+  currencyFullyQualifiedName?: string;
+  idRegistrationFees?: number;
 };
 
 export type IdentityResult = {
@@ -23,6 +32,13 @@ export type IdentityResult = {
     primaryaddresses?: string[];
     minimumsignatures?: number;
   };
+};
+
+export type CurrencyResult = {
+  name?: string;
+  currencyid?: string;
+  fullyqualifiedname?: string;
+  idregistrationfees?: number;
 };
 
 export function createVerusId(config: AppConfig): VerusIdInterface {
@@ -73,9 +89,28 @@ export async function requireIdentity(
   return result.result;
 }
 
-export async function listParentIdentities(
+export async function getCurrency(
   verusId: VerusIdInterface,
-): Promise<ParentIdentity[]> {
+  currency: string,
+): Promise<CurrencyResult | null> {
+  const result = await verusId.interface.getCurrency(currency);
+  if (result.error || !result.result?.currencyid) return null;
+  return result.result as CurrencyResult;
+}
+
+async function getCurrencyForIdentity(
+  verusId: VerusIdInterface,
+  identity: Pick<LocalIdentity, "iAddress" | "fullyQualifiedName">,
+): Promise<CurrencyResult | null> {
+  return (
+    (await getCurrency(verusId, identity.iAddress)) ||
+    (await getCurrency(verusId, withoutTrailingAt(identity.fullyQualifiedName)))
+  );
+}
+
+export async function listLocalIdentities(
+  verusId: VerusIdInterface,
+): Promise<LocalIdentity[]> {
   const result = await verusId.interface.request({
     cmd: "listidentities",
     getParams: () => [],
@@ -99,7 +134,37 @@ export async function listParentIdentities(
       status: entry.status,
       parent: entry.identity.parent,
       systemId: entry.identity.systemid,
+      primaryAddresses: Array.isArray(entry.identity.primaryaddresses)
+        ? entry.identity.primaryaddresses.map(String)
+        : [],
+      minimumSignatures:
+        typeof entry.identity.minimumsignatures === "number"
+          ? entry.identity.minimumsignatures
+          : undefined,
     }))
     .filter((identity) => identity.status == null || identity.status === "active")
     .sort((a, b) => a.fullyQualifiedName.localeCompare(b.fullyQualifiedName));
+}
+
+export async function listParentIdentities(
+  verusId: VerusIdInterface,
+): Promise<ParentIdentity[]> {
+  const identities = await listLocalIdentities(verusId);
+  const withCurrencies = await Promise.all(
+    identities.map(async (identity) => ({
+      identity,
+      currency: await getCurrencyForIdentity(verusId, identity),
+    })),
+  );
+
+  return withCurrencies
+    .filter((entry): entry is { identity: LocalIdentity; currency: CurrencyResult } =>
+      Boolean(entry.currency?.currencyid),
+    )
+    .map(({ identity, currency }) => ({
+      ...identity,
+      currencyId: currency.currencyid!,
+      currencyFullyQualifiedName: currency.fullyqualifiedname,
+      idRegistrationFees: currency.idregistrationfees,
+    }));
 }

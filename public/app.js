@@ -1,7 +1,9 @@
 (() => {
+  const signerSelect = document.getElementById("signing-id");
   const parentSelect = document.getElementById("parent-id");
   const webhookBaseUrlInput = document.getElementById("webhook-base-url");
   const responseUriInput = document.getElementById("response-uri");
+  const generateButton = document.getElementById("generate-button");
   const qrForm = document.getElementById("qr-form");
   const qrStatus = document.getElementById("qr-status");
   const qrResult = document.getElementById("qr-result");
@@ -11,6 +13,7 @@
   const requestTemplate = document.getElementById("request-template");
   const expandedRequests = new Set();
   let lastDefaultResponseUri = responseUriInput.value;
+  let parentCurrencyIds = new Set();
 
   const setStatus = (message, error = false) => {
     qrStatus.textContent = message;
@@ -29,6 +32,13 @@
   const copyText = async (value) => {
     await navigator.clipboard.writeText(value);
   };
+
+  const escapeHtml = (value) =>
+    String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
 
   const setText = (node, field, value) => {
     node.querySelector(`[data-field='${field}']`).textContent = value;
@@ -65,7 +75,7 @@
   };
 
   const defaultResponseUri = () => {
-    return `${webhookBaseUrlInput.value.trim().replace(/\/+$/g, "")}/generic-response`;
+    return webhookBaseUrlInput.value.trim().replace(/\/+$/g, "");
   };
 
   const syncDefaultResponseUri = () => {
@@ -102,7 +112,7 @@
   const genericResponseStage = (request) => {
     if (request.genericResponse?.verified) return "Received";
     if (request.genericResponse) return "Failed verification";
-    if (request.responseUri) return "Waiting";
+    if (request.responseUri) return "Redirect configured";
     return "Not requested";
   };
 
@@ -112,7 +122,7 @@
     }
     if (request.genericResponseError) return request.genericResponseError;
     if (request.genericResponse) return "Received but not verified";
-    if (request.responseUri) return "Waiting for mobile completion";
+    if (request.responseUri) return "Mobile will open the redirect URI after completion.";
     return "Not requested";
   };
 
@@ -125,23 +135,75 @@
     return String(confirmations);
   };
 
-  const loadParents = async () => {
+  const identityLabel = (identity) => {
+    return `${identity.fullyQualifiedName} (${identity.iAddress})`;
+  };
+
+  const findIdentityById = (identities, value) => {
+    return identities.find((identity) => {
+      return identity.iAddress === value || identity.fullyQualifiedName === value;
+    });
+  };
+
+  const renderIdentityOptions = (select, identities, emptyLabel) => {
+    if (!identities.length) {
+      select.innerHTML = `<option value="">${escapeHtml(emptyLabel)}</option>`;
+      select.disabled = true;
+      return;
+    }
+
+    select.innerHTML = identities
+      .map((identity) => {
+        return `<option value="${escapeHtml(identity.iAddress)}">${escapeHtml(identityLabel(identity))}</option>`;
+      })
+      .join("");
+    select.disabled = false;
+  };
+
+  const syncParentToSigner = () => {
+    if (parentCurrencyIds.has(signerSelect.value)) {
+      parentSelect.value = signerSelect.value;
+      return;
+    }
+
+    if (!parentSelect.value && parentSelect.options.length > 0) {
+      parentSelect.selectedIndex = 0;
+    }
+  };
+
+  const loadIdentityChoices = async () => {
+    signerSelect.innerHTML = "<option value=\"\">Loading...</option>";
     parentSelect.innerHTML = "<option value=\"\">Loading...</option>";
+    signerSelect.disabled = true;
+    parentSelect.disabled = true;
+    generateButton.disabled = true;
+
     try {
-      const data = await fetchJson("/api/parents");
-      if (!data.parents.length) {
-        parentSelect.innerHTML = "<option value=\"\">No local identities found</option>";
-        return;
+      const [signerData, parentData] = await Promise.all([
+        fetchJson("/api/signers"),
+        fetchJson("/api/parents"),
+      ]);
+
+      renderIdentityOptions(signerSelect, signerData.signers, "No signer VerusIDs found");
+      renderIdentityOptions(parentSelect, parentData.parents, "No local currency namespaces found");
+      parentCurrencyIds = new Set(parentData.parents.map((parent) => parent.iAddress));
+
+      const configuredSigner = findIdentityById(
+        signerData.signers,
+        signerData.configuredSigningId,
+      );
+      if (configuredSigner) {
+        signerSelect.value = configuredSigner.iAddress;
       }
 
-      parentSelect.innerHTML = data.parents
-        .map((parent) => {
-          const label = `${parent.fullyQualifiedName} (${parent.iAddress})`;
-          return `<option value="${parent.iAddress}">${label}</option>`;
-        })
-        .join("");
+      syncParentToSigner();
+      generateButton.disabled = !signerData.signers.length || !parentData.parents.length;
     } catch (error) {
+      signerSelect.innerHTML = "<option value=\"\">Failed to load signers</option>";
       parentSelect.innerHTML = "<option value=\"\">Failed to load parents</option>";
+      signerSelect.disabled = true;
+      parentSelect.disabled = true;
+      generateButton.disabled = true;
       setStatus(error.message, true);
     }
   };
@@ -184,6 +246,7 @@
 
         setCopyableText(node, "challengeId", request.challengeId);
         setCopyableText(node, "parentId", request.parentId);
+        setCopyableText(node, "signingId", request.signingId);
         setCopyableText(node, "responseUri", request.responseUri, "Not requested");
         setCopyableText(
           node,
@@ -250,6 +313,7 @@
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          signingId: signerSelect.value,
           parentId: parentSelect.value,
           webhookBaseUrl: webhookBaseUrlInput.value,
           responseUri: responseUriInput.value,
@@ -266,7 +330,8 @@
     }
   });
 
-  document.getElementById("refresh-parents").addEventListener("click", loadParents);
+  signerSelect.addEventListener("change", syncParentToSigner);
+  document.getElementById("refresh-parents").addEventListener("click", loadIdentityChoices);
   document.getElementById("refresh-requests").addEventListener("click", renderRequests);
   webhookBaseUrlInput.addEventListener("input", syncDefaultResponseUri);
 
@@ -281,7 +346,7 @@
     });
   });
 
-  loadParents();
+  loadIdentityChoices();
   renderRequests();
   setInterval(renderRequests, 5000);
 })();
