@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local VerusID Provisioning</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="page-header">
+        <div>
+          <h1>Local VerusID Provisioning</h1>
+          <p>Generate choose-name provisioning QRs and serve the local webhook.</p>
+        </div>
+        <dl class="meta">
+          <div>
+            <dt>System</dt>
+            <dd><%= systemId %></dd>
+          </div>
+          <div>
+            <dt>Webhook</dt>
+            <dd><%= webhookBaseUrl %></dd>
+          </div>
+        </dl>
+      </header>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Generate QR</h2>
+          <button id="refresh-parents" type="button">Refresh parents</button>
+        </div>
+        <form id="qr-form" class="form-grid">
+          <label>
+            Parent VerusID
+            <select id="parent-id" required>
+              <option value="">Loading...</option>
+            </select>
+          </label>
+          <label>
+            Webhook base URL
+            <input id="webhook-base-url" type="url" value="<%= webhookBaseUrl %>" required />
+          </label>
+          <label>
+            Response URI (POST)
+            <input id="response-uri" type="url" value="<%= responseUri %>" />
+          </label>
+          <button id="generate-button" type="submit">Generate provisioning QR</button>
+        </form>
+        <p id="qr-status" class="status"></p>
+        <div id="qr-result" class="qr-result" hidden>
+          <img id="qr-image" alt="Provisioning QR code" />
+          <label>
+            Deeplink
+            <textarea id="deeplink" readonly></textarea>
+          </label>
+          <button class="copy-button" type="button" data-copy-target="deeplink">Copy deeplink</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Provisioning Requests</h2>
+          <button id="refresh-requests" type="button">Refresh requests</button>
+        </div>
+        <div id="requests-list" class="requests-list"></div>
+      </section>
+    </main>
+
+    <template id="request-template">
+      <article class="request-card">
+        <header class="request-card-header">
+          <div>
+            <h3 data-field="title"></h3>
+            <p data-field="subtitle"></p>
+          </div>
+          <span data-field="status" class="badge"></span>
+        </header>
+        <dl class="request-stats">
+          <div>
+            <dt>Automation</dt>
+            <dd data-field="automationState"></dd>
+          </div>
+          <div>
+            <dt>Commitment</dt>
+            <dd data-field="commitmentSummary"></dd>
+          </div>
+          <div>
+            <dt>Registration</dt>
+            <dd data-field="registrationSummary"></dd>
+          </div>
+          <div>
+            <dt>Auth response</dt>
+            <dd data-field="genericResponseSummary"></dd>
+          </div>
+        </dl>
+        <p data-field="automationError" class="error"></p>
+        <details class="request-details">
+          <summary>Technical details</summary>
+          <dl class="request-metadata">
+            <div>
+              <dt>Challenge</dt>
+              <dd>
+                <span data-field="challengeId"></span>
+                <button class="copy-value" type="button" data-copy-field="challengeId" hidden>Copy</button>
+              </dd>
+            </div>
+            <div>
+              <dt>Parent ID</dt>
+              <dd>
+                <span data-field="parentId"></span>
+                <button class="copy-value" type="button" data-copy-field="parentId" hidden>Copy</button>
+              </dd>
+            </div>
+            <div>
+              <dt>Wallet address</dt>
+              <dd>
+                <span data-field="walletSigningAddress"></span>
+                <button class="copy-value" type="button" data-copy-field="walletSigningAddress" hidden>Copy</button>
+              </dd>
+            </div>
+            <div>
+              <dt>Name ID</dt>
+              <dd>
+                <span data-field="requestedIdentityAddress"></span>
+                <button class="copy-value" type="button" data-copy-field="requestedIdentityAddress" hidden>Copy</button>
+              </dd>
+            </div>
+            <div>
+              <dt>Commit tx</dt>
+              <dd>
+                <span data-field="commitmentTxid"></span>
+                <button class="copy-value" type="button" data-copy-field="commitmentTxid" hidden>Copy</button>
+              </dd>
+            </div>
+            <div>
+              <dt>Commit confs checked</dt>
+              <dd data-field="commitmentConfirmationsDetail"></dd>
+            </div>
+            <div>
+              <dt>Register tx</dt>
+              <dd>
+                <span data-field="registrationTxid"></span>
+                <button class="copy-value" type="button" data-copy-field="registrationTxid" hidden>Copy</button>
+              </dd>
+            </div>
+            <div>
+              <dt>Response</dt>
+              <dd data-field="lastResponseState"></dd>
+            </div>
+            <div>
+              <dt>Response URI</dt>
+              <dd>
+                <span data-field="responseUri"></span>
+                <button class="copy-value" type="button" data-copy-field="responseUri" hidden>Copy</button>
+              </dd>
+            </div>
+            <div>
+              <dt>Auth signer</dt>
+              <dd>
+                <span data-field="genericResponseSigner"></span>
+                <button class="copy-value" type="button" data-copy-field="genericResponseSigner" hidden>Copy</button>
+              </dd>
+            </div>
+            <div>
+              <dt>Auth response</dt>
+              <dd data-field="genericResponseDetail"></dd>
+            </div>
+            <div>
+              <dt>Raw auth response</dt>
+              <dd>
+                <span data-field="rawGenericResponse"></span>
+                <button class="copy-value" type="button" data-copy-field="rawGenericResponse" hidden>Copy</button>
+              </dd>
+            </div>
+            <div>
+              <dt>Automation</dt>
+              <dd data-field="automationStateDetail"></dd>
+            </div>
+            <div>
+              <dt>Updated</dt>
+              <dd data-field="updatedAt"></dd>
+            </div>
+          </dl>
+        </details>
+      </article>
+    </template>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
